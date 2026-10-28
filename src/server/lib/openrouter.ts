@@ -168,7 +168,11 @@ export function buildChatAgentModel(
   const model = modelId ?? DEFAULT_CHAT_AGENT_MODEL;
   const openrouter =
     "apiKey" in access
-      ? createOpenRouter({ apiKey: access.apiKey, baseURL: access.baseURL })
+      ? createOpenRouter({
+          apiKey: access.apiKey,
+          baseURL: access.baseURL,
+          fetch: access.baseURL ? compatibleProviderFetch : undefined,
+        })
       : createOpenRouter({
           apiKey: "gateway-managed",
           baseURL: GATEWAY_BASE_URL,
@@ -195,6 +199,88 @@ export function buildChatAgentModel(
       wrapStream: async ({ params }) => (await pick()).doStream(params),
     },
   });
+}
+
+/**
+ * OpenAI-compatible providers send `null` for absent message fields (for
+ * example `tool_calls: null` and `reasoning_content: null`), which the
+ * OpenRouter SDK's response schema rejects as "Invalid JSON response". Drop
+ * null fields from each choice's message (JSON) and delta (event stream).
+ */
+export const compatibleProviderFetch: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init);
+  const type = response.headers.get("content-type") ?? "";
+  if (!response.ok || !response.body) return response;
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  const init2 = {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  };
+  if (type.includes("application/json")) {
+    const body: unknown = await response.json();
+    return new Response(JSON.stringify(dropNullChoiceFields(body)), init2);
+  }
+  if (type.includes("text/event-stream")) {
+    return new Response(normalizeEventStream(response.body), init2);
+  }
+  return response;
+};
+
+export function dropNullChoiceFields(body: unknown): unknown {
+  if (typeof body !== "object" || body === null) return body;
+  const choices = (body as { choices?: unknown }).choices;
+  if (!Array.isArray(choices)) return body;
+  for (const choice of choices) {
+    if (typeof choice !== "object" || choice === null) continue;
+    for (const field of ["message", "delta"]) {
+      const part = (choice as Record<string, unknown>)[field];
+      if (typeof part !== "object" || part === null) continue;
+      const record = part as Record<string, unknown>;
+      for (const key of Object.keys(record)) {
+        if (record[key] === null) delete record[key];
+      }
+    }
+  }
+  return body;
+}
+
+function normalizeEventStream(
+  body: ReadableStream<Uint8Array>,
+): ReadableStream<Uint8Array> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  const rewrite = (line: string) => {
+    if (!line.startsWith("data:")) return line;
+    const data = line.slice(5).trim();
+    if (!data || data === "[DONE]") return line;
+    try {
+      return `data: ${JSON.stringify(dropNullChoiceFields(JSON.parse(data)))}`;
+    } catch {
+      return line;
+    }
+  };
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        if (lines.length) {
+          controller.enqueue(
+            encoder.encode(lines.map(rewrite).join("\n") + "\n"),
+          );
+        }
+      },
+      flush(controller) {
+        buffer += decoder.decode();
+        if (buffer) controller.enqueue(encoder.encode(rewrite(buffer)));
+      },
+    }),
+  );
 }
 
 /**
