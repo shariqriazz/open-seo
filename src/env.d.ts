@@ -123,6 +123,8 @@ declare namespace Cloudflare {
     OPENROUTER_BASE_URL?: string;
     // Optional OpenRouter model slug override (defaults in openrouter.ts).
     OPENROUTER_MODEL?: string;
+    // Optional reasoning effort for every AI call (minimal, low, medium, high, max).
+    OPENROUTER_REASONING_EFFORT?: string;
   }
 }
 

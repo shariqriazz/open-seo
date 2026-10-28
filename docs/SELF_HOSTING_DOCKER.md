@@ -65,6 +65,7 @@ docker compose up -d --force-recreate init web crawl-gateway
 | `OPENROUTER_API_KEY`                       | SAM conversations, website research and summaries                            |
 | `OPENROUTER_BASE_URL`                      | Optional base URL of another OpenRouter-compatible AI provider               |
 | `OPENROUTER_MODEL`                         | Optional model override                                                      |
+| `OPENROUTER_REASONING_EFFORT`              | Optional reasoning effort for every AI call (`minimal` to `max`)             |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Search Console and Analytics linking with your own Google OAuth app |
 | `CONTEXT_API_KEY`                          | Optional JavaScript rendering for site audits                                |
 

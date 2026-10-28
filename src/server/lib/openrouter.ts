@@ -16,8 +16,29 @@ import { getEnvValueSync, getWorkersEnv } from "@/server/lib/runtime-env";
  * resolves.
  */
 export type OpenRouterAccess =
-  | { apiKey: string; baseURL?: string }
+  | { apiKey: string; baseURL?: string; reasoningEffort?: ReasoningEffort }
   | { gatewayFetch: typeof fetch };
+
+/** Reasoning efforts an OpenRouter-compatible chat API accepts. */
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "max";
+const REASONING_EFFORTS: readonly string[] = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "max",
+];
+
+/** OPENROUTER_REASONING_EFFORT, when it names a valid effort. */
+function reasoningEffortOverride(env: object): ReasoningEffort | undefined {
+  const value = getEnvValueSync(env, "OPENROUTER_REASONING_EFFORT")?.trim();
+  if (!value) return undefined;
+  if (REASONING_EFFORTS.includes(value)) return value as ReasoningEffort;
+  console.warn(
+    `[openrouter] ignoring OPENROUTER_REASONING_EFFORT=${value}; use one of ${REASONING_EFFORTS.join(", ")}`,
+  );
+  return undefined;
+}
 
 const GATEWAY_BASE_URL =
   "https://every-app-gateway.invalid/api/ai/openrouter/api/v1";
@@ -53,7 +74,9 @@ export function getOpenRouterAccess(env: object): OpenRouterAccess | null {
   // Any OpenAI-compatible endpoint that speaks OpenRouter's chat API; unset
   // means OpenRouter itself.
   const baseURL = getEnvValueSync(env, "OPENROUTER_BASE_URL");
-  return apiKey ? { apiKey, baseURL } : null;
+  return apiKey
+    ? { apiKey, baseURL, reasoningEffort: reasoningEffortOverride(env) }
+    : null;
 }
 
 /** SAM's model, from its Durable Object env. Sync: Think's getModel() is. */
@@ -151,14 +174,18 @@ export function buildChatAgentModel(
           baseURL: GATEWAY_BASE_URL,
           fetch: access.gatewayFetch,
         });
-  const primary = openRouterModel(openrouter, model, reasoningEffort);
+  // OPENROUTER_REASONING_EFFORT replaces each call's own effort.
+  const effort =
+    ("apiKey" in access && access.reasoningEffort) || reasoningEffort;
+  const primary = openRouterModel(openrouter, model, effort);
   // The MiniMax fallback is an OpenRouter slug; another provider may not have it.
-  if (!model.startsWith("openai/") || ("apiKey" in access && access.baseURL)) {
-    return primary;
+  if ("apiKey" in access && access.baseURL) {
+    return reportZeroCostWhenMissing(primary);
   }
+  if (!model.startsWith("openai/")) return primary;
   // Where OpenRouter would reject OpenAI, pick MiniMax M3 before the request.
   // The country lookup is async and getModel() is sync, so it runs per call.
-  const fallback = openRouterModel(openrouter, MINIMAX_M3, reasoningEffort);
+  const fallback = openRouterModel(openrouter, MINIMAX_M3, effort);
   const pick = async () => ((await openAiBlockedHere()) ? fallback : primary);
   return wrapLanguageModel({
     model: primary,
@@ -170,10 +197,44 @@ export function buildChatAgentModel(
   });
 }
 
+/**
+ * OpenRouter-compatible providers other than OpenRouter don't return
+ * OpenRouter's per-call USD cost, which requireOpenRouterCostUsd demands on
+ * every metered generate call. Usage credits are only charged in hosted mode,
+ * so a missing cost is recorded as 0 instead of failing the call. Streaming
+ * paths (SAM) already read the cost leniently with openRouterCostUsd.
+ */
+function reportZeroCostWhenMissing(model: LanguageModelV3): LanguageModelV3 {
+  return wrapLanguageModel({
+    model,
+    middleware: {
+      specificationVersion: "v3",
+      wrapGenerate: async ({ doGenerate }) => {
+        const result = await doGenerate();
+        const openrouter = result.providerMetadata?.openrouter ?? {};
+        const usage =
+          typeof openrouter.usage === "object" &&
+          openrouter.usage !== null &&
+          !Array.isArray(openrouter.usage)
+            ? openrouter.usage
+            : {};
+        if (typeof usage.cost === "number") return result;
+        return {
+          ...result,
+          providerMetadata: {
+            ...result.providerMetadata,
+            openrouter: { ...openrouter, usage: { ...usage, cost: 0 } },
+          },
+        };
+      },
+    },
+  });
+}
+
 function openRouterModel(
   openrouter: OpenRouterProvider,
   model: string,
-  reasoningEffort: "max" | "low",
+  reasoningEffort: ReasoningEffort,
 ): LanguageModelV3 {
   // MiniMax M3 (env override or OpenAI fallback): `provider.order` prefers
   // Together, then Atlas Cloud (fp8); `zdr: true` restricts routing to Zero-Data-
