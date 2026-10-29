@@ -52,7 +52,11 @@ export async function getLocalBrowser(): Promise<Pick<
 > | null> {
   if (!(await gateway())) return null;
   const quickAction = async (action: string, options: unknown) => {
-    const response = await post(`/${action}`, options, 90_000);
+    // One retry when the request never reached the service (a dropped
+    // connection, not a page the browser failed to load).
+    const response = await post(`/${action}`, options, 90_000).catch(() =>
+      post(`/${action}`, options, 90_000),
+    );
     if (!response) throw new Error("Local browser is not configured");
     return response;
   };

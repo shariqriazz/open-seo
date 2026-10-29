@@ -12,9 +12,9 @@ import { connect } from "node:net";
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { lookup } from "node:dns/promises";
+import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
 import puppeteer from "puppeteer-core";
-import lighthouse from "lighthouse";
-import desktopConfig from "lighthouse/core/config/desktop-config.js";
 import { isPublicAddress, resolveTarget } from "./crawl-gateway.mjs";
 
 const PROXY_PORT = 3128;
@@ -110,9 +110,10 @@ const CHROME_ARGS = [
   "--no-sandbox",
 ];
 
+const CHROMIUM_PATH = process.env.CHROMIUM_PATH ?? "/usr/bin/chromium";
 const launch = () =>
   puppeteer.launch({
-    executablePath: process.env.CHROMIUM_PATH ?? "/usr/bin/chromium",
+    executablePath: CHROMIUM_PATH,
     headless: true,
     args: CHROME_ARGS,
   });
@@ -167,39 +168,71 @@ async function renderContent({ url, gotoOptions }) {
   }
 }
 
-// Each check gets a fresh Chromium: concurrent Lighthouse runs in one browser
-// disturb each other's measurements.
+// Each check runs the Lighthouse CLI in its own process with its own Chromium.
+// Lighthouse keeps timing marks per process, so concurrent runs in one process
+// fail with "performance mark has not been set", and concurrent runs in one
+// browser disturb each other's measurements.
+const LIGHTHOUSE_CLI = createRequire(import.meta.url).resolve(
+  "lighthouse/cli/index.js",
+);
+const LIGHTHOUSE_TIMEOUT_MS = 240_000;
+
+function lighthouseCli(target, strategy) {
+  const args = [
+    LIGHTHOUSE_CLI,
+    target,
+    "--output=json",
+    "--output-path=stdout",
+    "--quiet",
+    `--only-categories=${CATEGORIES.join(",")}`,
+    `--chrome-flags=--headless=new ${CHROME_ARGS.join(" ")}`,
+    ...(strategy === "desktop" ? ["--preset=desktop"] : []),
+  ];
+  return new Promise((resolve, reject) => {
+    execFile(
+      process.execPath,
+      args,
+      {
+        env: { ...process.env, CHROME_PATH: CHROMIUM_PATH },
+        timeout: LIGHTHOUSE_TIMEOUT_MS,
+        maxBuffer: 128 * 1024 * 1024,
+      },
+      (error, stdout) => {
+        // A page Lighthouse cannot load still prints a report naming the
+        // runtime error, with a non-zero exit.
+        if (stdout.trim()) {
+          try {
+            resolve(JSON.parse(stdout));
+            return;
+          } catch {
+            // Fall through to the process error.
+          }
+        }
+        reject(error ?? new Error("Lighthouse printed no report"));
+      },
+    );
+  });
+}
+
 async function runLighthouse({ url, strategy }) {
   const target = (await resolveTarget(url)).url.href;
-  const browser = await launch();
-  try {
-    const port = Number(new URL(browser.wsEndpoint()).port);
-    const result = await lighthouse(
-      target,
-      { port, output: "json", logLevel: "error", onlyCategories: CATEGORIES },
-      strategy === "desktop" ? desktopConfig : undefined,
+  const lhr = await lighthouseCli(target, strategy);
+  if (lhr.runtimeError?.code) {
+    const error = new Error(
+      `Lighthouse encountered an error with the following code: ${lhr.runtimeError.code}`,
     );
-    const lhr = result?.lhr;
-    if (!lhr) throw new Error("Lighthouse returned no report");
-    if (lhr.runtimeError?.code) {
-      const error = new Error(
-        `Lighthouse encountered an error with the following code: ${lhr.runtimeError.code}`,
-      );
-      error.status = 422;
-      throw error;
-    }
-    const audits = { ...lhr.audits };
-    for (const id of DROPPED_AUDITS) delete audits[id];
-    return {
-      requestedUrl: lhr.requestedUrl,
-      finalUrl: lhr.finalDisplayedUrl ?? lhr.mainDocumentUrl ?? target,
-      lighthouseVersion: lhr.lighthouseVersion,
-      categories: lhr.categories,
-      audits,
-    };
-  } finally {
-    await browser.close().catch(() => {});
+    error.status = 422;
+    throw error;
   }
+  const audits = { ...lhr.audits };
+  for (const id of DROPPED_AUDITS) delete audits[id];
+  return {
+    requestedUrl: lhr.requestedUrl,
+    finalUrl: lhr.finalDisplayedUrl ?? lhr.mainDocumentUrl ?? target,
+    lighthouseVersion: lhr.lighthouseVersion,
+    categories: lhr.categories,
+    audits,
+  };
 }
 
 async function readJson(incoming) {
