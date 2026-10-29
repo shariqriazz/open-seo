@@ -19,6 +19,11 @@ async function gateway(): Promise<{ url: string; secret: string } | null> {
   return { url, secret };
 }
 
+/** Whether this deployment runs its own browser service. */
+export async function hasLocalBrowser(): Promise<boolean> {
+  return Boolean(await getOptionalEnvValue("BROWSER_GATEWAY_URL"));
+}
+
 async function post(
   path: string,
   body: unknown,
@@ -61,8 +66,8 @@ const MAX_REPORT_BYTES = 32 * 1024 * 1024;
 /**
  * One Lighthouse check on the local browser, reduced to the payload OpenSEO
  * stores, or null when this deployment has no local browser. The service
- * queues checks two at a time; an audit sends up to ten at once, so the wait
- * stays inside the five-minute Lighthouse step.
+ * runs four checks at once and an audit sends at most four (two URLs, mobile
+ * and desktop), so none waits behind another.
  */
 export async function runLocalLighthouse(
   url: string,

@@ -25,7 +25,8 @@ interface CrawlWindowLimits {
 export const CRAWL_WINDOW: CrawlWindowLimits = {
   initial: 2,
   min: 1,
-  max: 2,
+  // Four open fetches keep up with the 250 ms pacing on a slow site.
+  max: 4,
   budgetBytes: 8 * 1024 * 1024,
 };
 

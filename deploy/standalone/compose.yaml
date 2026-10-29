@@ -40,6 +40,9 @@ services:
       # five minutes in. A crawl of 10,000 pages at one page a second takes
       # about three hours.
       CELLD_HANDLER_BUDGET_S: "21600"
+      # Outbound fetches end after this many seconds (default 120). A local
+      # Lighthouse check can take over two minutes.
+      CELLD_FETCH_TIMEOUT_S: "300"
       CELLD_MAX_REQUEST_BODY_BYTES: "33554432"
       RUST_LOG: warn,cell_console=info
     mem_limit: 2g
@@ -88,6 +91,8 @@ services:
     # Chromium and Lighthouse for site audits (deploy/standalone/Dockerfile.browser).
     # No published image: build it with compose.build.yaml or set OPENSEO_BROWSER_IMAGE.
     image: ${OPENSEO_BROWSER_IMAGE:-openseo-browser:latest}
+    # Reaps the Chromium processes each Lighthouse check leaves behind.
+    init: true
     volumes: [config:/config:ro]
     mem_limit: 3g
     depends_on:

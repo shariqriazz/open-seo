@@ -162,9 +162,7 @@ describe("crawl pacing and cooldowns", () => {
     await vi.runAllTimersAsync();
     expect(await result).toEqual({ pagesCrawled: 210, completed: true });
     expect(starts).toHaveLength(210);
-    expect(starts.slice(1).every((at, i) => at - starts[i] >= 1_000)).toBe(
-      true,
-    );
+    expect(starts.slice(1).every((at, i) => at - starts[i] >= 250)).toBe(true);
     expect(mocks.claimChunk.mock.calls.length).toBeGreaterThan(1);
   });
 
@@ -193,9 +191,10 @@ describe("crawl pacing and cooldowns", () => {
         headers: { "content-type": "text/html" },
       });
     });
-    const result = crawl(100);
+    // Past one chunk's 200 leases, so the slower pace must carry across.
+    const result = crawl(250);
     await vi.runAllTimersAsync();
-    expect(await result).toEqual({ pagesCrawled: 100, completed: true });
+    expect(await result).toEqual({ pagesCrawled: 250, completed: true });
     expect(starts[1]).toBe(30_000);
     const gaps = starts.slice(1).map((at, i) => at - starts[i]);
     expect(gaps.slice(1, 15).every((gap) => gap >= 2_000)).toBe(true);
@@ -369,8 +368,8 @@ describe("rendering credit hold", () => {
       completed: false,
       stoppedBy: "crawl-time-limit",
     });
-    // One request a second from t=0, none started at or after the deadline.
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    // Four requests a second from t=0, none started at or after the deadline.
+    expect(fetchMock).toHaveBeenCalledTimes(20);
   });
 
   it("stops before rendering could cost more than the hold", async () => {

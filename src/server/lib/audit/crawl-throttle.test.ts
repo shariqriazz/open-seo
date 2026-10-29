@@ -62,7 +62,7 @@ describe("createCrawlThrottle", () => {
     );
     await vi.runAllTimersAsync();
     await requests;
-    expect(starts).toEqual([0, 1_000, 2_000, 3_000, 4_000]);
+    expect(starts).toEqual([0, 250, 500, 750, 1_000]);
   });
 
   it("pauses for thirty seconds on the first 429 and spaces retries", async () => {
@@ -151,7 +151,7 @@ describe("createCrawlThrottle", () => {
     for (let i = 0; i < 9; i++) await throttle.recovered(URL_A);
     throttle = createCrawlThrottle(Date.now() + 90_000, throttle.state);
     for (let i = 0; i < 11; i++) await throttle.recovered(URL_A);
-    expect(throttle.state.intervalMs).toBe(1_000);
+    expect(throttle.state.intervalMs).toBe(250);
   });
 
   it("defers a ten-minute wait without marking the audit stopped", async () => {
@@ -176,7 +176,7 @@ describe("createCrawlThrottle", () => {
     });
     await vi.runAllTimersAsync();
     await request;
-    expect(startedAt).toBe(1_000);
+    expect(startedAt).toBe(250);
   });
 
   it("does not label an ordinary chunk deadline as a rate-limit stop", async () => {

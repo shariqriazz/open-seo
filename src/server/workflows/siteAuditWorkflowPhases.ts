@@ -28,6 +28,7 @@ import {
   type CrawlPhaseResult,
 } from "@/server/workflows/siteAuditWorkflowCrawl";
 import { pgStep } from "@/server/workflows/pgStep";
+import { hasLocalBrowser } from "@/server/lib/audit/local-browser";
 import {
   DB_STEP,
   DISCOVERY_STEP,
@@ -42,6 +43,11 @@ import {
  * lock serializes the memory-heavy payload parsing behind them.
  */
 const LIGHTHOUSE_URL_CONCURRENCY = 5;
+/**
+ * The standalone stack's own browser runs four checks at once, so a wave of
+ * two URLs never queues a check behind another.
+ */
+const LOCAL_LIGHTHOUSE_URL_CONCURRENCY = 2;
 /** Frontier seeds per scratchpad RPC call. */
 const SEED_RPC_BATCH = 2_000;
 
@@ -209,17 +215,17 @@ export async function runLighthousePhase(
     strategy: config.lighthouseStrategy,
   });
 
+  const waveSize = (await hasLocalBrowser())
+    ? LOCAL_LIGHTHOUSE_URL_CONCURRENCY
+    : LIGHTHOUSE_URL_CONCURRENCY;
   let completedChecks = 0;
   let failedChecks = 0;
   for (
     let chunkStart = 0;
     chunkStart < lighthouseWork.length;
-    chunkStart += LIGHTHOUSE_URL_CONCURRENCY
+    chunkStart += waveSize
   ) {
-    const chunk = lighthouseWork.slice(
-      chunkStart,
-      chunkStart + LIGHTHOUSE_URL_CONCURRENCY,
-    );
+    const chunk = lighthouseWork.slice(chunkStart, chunkStart + waveSize);
 
     // The paid calls are checkpointed separately from all storage. With
     // Workflow retries disabled, a later R2/DB/progress failure cannot replay
@@ -255,7 +261,7 @@ export async function runLighthousePhase(
       );
     });
 
-    const chunkIndex = Math.floor(chunkStart / LIGHTHOUSE_URL_CONCURRENCY) + 1;
+    const chunkIndex = Math.floor(chunkStart / waveSize) + 1;
     const priorCompleted = completedChecks;
     const priorFailed = failedChecks;
     const counts = await pgStep(

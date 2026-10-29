@@ -18,8 +18,9 @@ import desktopConfig from "lighthouse/core/config/desktop-config.js";
 import { isPublicAddress, resolveTarget } from "./crawl-gateway.mjs";
 
 const PROXY_PORT = 3128;
-const MAX_RENDERS = 3;
-const MAX_LIGHTHOUSE = 2;
+// Matches the crawl's four open fetches and the audit's four checks per wave.
+const MAX_RENDERS = 4;
+const MAX_LIGHTHOUSE = 4;
 const MAX_RENDER_TIMEOUT_MS = 60_000;
 const MAX_BODY_BYTES = 64 * 1024;
 const CATEGORIES = ["performance", "accessibility", "best-practices", "seo"];
@@ -235,13 +236,33 @@ export function createBrowserGateway(secret) {
       return;
     }
     const [limit, handler] = route;
+    const queuedAt = Date.now();
+    let startedAt = queuedAt;
+    let target = "";
+    const log = (outcome) =>
+      console.log(
+        JSON.stringify({
+          route: incoming.url,
+          url: target,
+          outcome,
+          waitMs: startedAt - queuedAt,
+          runMs: Date.now() - startedAt,
+        }),
+      );
     try {
-      const body = await limit(async () => handler(await readJson(incoming)));
+      const request = await readJson(incoming);
+      target = String(request?.url ?? "").slice(0, 300);
+      const body = await limit(() => {
+        startedAt = Date.now();
+        return handler(request);
+      });
+      log("ok");
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify(body));
     } catch (error) {
       // Page text never goes back to the caller or the log, only the error.
       const message = error instanceof Error ? error.message : String(error);
+      log(message.slice(0, 200));
       response.writeHead(error?.status ?? 502, {
         "content-type": "application/json",
       });

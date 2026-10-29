@@ -66,10 +66,10 @@ describe("adjustCrawlWindow", () => {
     expect(adjustCrawlWindow(1, [page("error", 15_000)])).toBe(1);
   });
 
-  it("never grows beyond two concurrent requests, even on a fast site", () => {
+  it("never grows beyond four concurrent requests, even on a fast site", () => {
     const recent = Array.from({ length: 25 }, () => page("ok", 400));
-    expect(adjustCrawlWindow(2, recent)).toBe(2);
-    expect(adjustCrawlWindow(1, recent)).toBe(2);
+    expect(adjustCrawlWindow(4, recent)).toBe(4);
+    expect(adjustCrawlWindow(1, recent)).toBe(4);
   });
 
   it("preserves the byte budget if page sizes increase", () => {

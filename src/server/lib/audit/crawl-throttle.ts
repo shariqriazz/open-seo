@@ -16,7 +16,11 @@ const MAX_429_RETRIES = 1;
 /** URLs given up on in a row, with no page served between them, before the crawl stops. */
 const MAX_REFUSED_URLS = 3;
 const FIRST_DELAY_MS = 30_000;
-const MIN_INTERVAL_MS = 1_000;
+// Four requests a second: the self-hosted crawl paces itself, and a site that
+// refuses with 429s still backs it off toward MAX_INTERVAL_MS.
+const MIN_INTERVAL_MS = 250;
+/** A site that refused gets at least this long between requests, as before. */
+const REFUSED_INTERVAL_MS = 2_000;
 const MAX_INTERVAL_MS = 10_000;
 /** Pages served in a row before pacing returns to normal. */
 const RECOVERY_PAGES = 20;
@@ -120,7 +124,10 @@ export function createCrawlThrottle(
     // A URL's second refusal is expected on Shopify and says nothing new
     // about the site's pace; only a fresh URL's 429 slows the crawl down.
     if (count === 1) {
-      state.intervalMs = Math.min(MAX_INTERVAL_MS, state.intervalMs * 2);
+      state.intervalMs = Math.min(
+        MAX_INTERVAL_MS,
+        Math.max(REFUSED_INTERVAL_MS, state.intervalMs * 2),
+      );
     }
     if (count > MAX_429_RETRIES) {
       delete state.refusals[url];
