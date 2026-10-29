@@ -53,7 +53,8 @@ it("sends requests to a custom base URL without the region lookup", async () => 
     prompt: "hi",
   });
   expect(fetchMock).toHaveBeenCalledOnce();
-  expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+  const input = fetchMock.mock.calls[0]?.[0];
+  expect(input instanceof Request ? input.url : input?.toString()).toBe(
     "https://llm.example.com/v1/chat/completions",
   );
 });

@@ -21,7 +21,7 @@ export type OpenRouterAccess =
 
 /** Reasoning efforts an OpenRouter-compatible chat API accepts. */
 export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "max";
-const REASONING_EFFORTS: readonly string[] = [
+const REASONING_EFFORTS: readonly ReasoningEffort[] = [
   "minimal",
   "low",
   "medium",
@@ -33,7 +33,8 @@ const REASONING_EFFORTS: readonly string[] = [
 function reasoningEffortOverride(env: object): ReasoningEffort | undefined {
   const value = getEnvValueSync(env, "OPENROUTER_REASONING_EFFORT")?.trim();
   if (!value) return undefined;
-  if (REASONING_EFFORTS.includes(value)) return value as ReasoningEffort;
+  const effort = REASONING_EFFORTS.find((name) => name === value);
+  if (effort) return effort;
   console.warn(
     `[openrouter] ignoring OPENROUTER_REASONING_EFFORT=${value}; use one of ${REASONING_EFFORTS.join(", ")}`,
   );
@@ -207,7 +208,7 @@ export function buildChatAgentModel(
  * OpenRouter SDK's response schema rejects as "Invalid JSON response". Drop
  * null fields from each choice's message (JSON) and delta (event stream).
  */
-export const compatibleProviderFetch: typeof fetch = async (input, init) => {
+const compatibleProviderFetch: typeof fetch = async (input, init) => {
   const response = await fetch(input, init);
   const type = response.headers.get("content-type") ?? "";
   if (!response.ok || !response.body) return response;
@@ -229,18 +230,17 @@ export const compatibleProviderFetch: typeof fetch = async (input, init) => {
   return response;
 };
 
-export function dropNullChoiceFields(body: unknown): unknown {
+function dropNullChoiceFields(body: unknown): unknown {
   if (typeof body !== "object" || body === null) return body;
-  const choices = (body as { choices?: unknown }).choices;
+  const choices: unknown = Reflect.get(body, "choices");
   if (!Array.isArray(choices)) return body;
   for (const choice of choices) {
     if (typeof choice !== "object" || choice === null) continue;
     for (const field of ["message", "delta"]) {
-      const part = (choice as Record<string, unknown>)[field];
+      const part: unknown = Reflect.get(choice, field);
       if (typeof part !== "object" || part === null) continue;
-      const record = part as Record<string, unknown>;
-      for (const key of Object.keys(record)) {
-        if (record[key] === null) delete record[key];
+      for (const key of Object.keys(part)) {
+        if (Reflect.get(part, key) === null) Reflect.deleteProperty(part, key);
       }
     }
   }
