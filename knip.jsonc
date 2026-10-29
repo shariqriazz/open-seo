@@ -57,6 +57,9 @@
     // export via wrangler (scripts/celld).
     "@better-auth/utils",
     "miniflare",
+    // Installed in the browser image from deploy/standalone/browser/package.json.
+    "lighthouse",
+    "puppeteer-core",
     // Tailwindcss used via @tailwindcss/vite plugin
     "tailwindcss",
     // Imported by app.css; shadcn is also the component CLI

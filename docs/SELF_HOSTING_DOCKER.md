@@ -67,11 +67,13 @@ docker compose up -d --force-recreate init web crawl-gateway
 | `OPENROUTER_MODEL`                         | Optional model override                                                      |
 | `OPENROUTER_REASONING_EFFORT`              | Optional reasoning effort for every AI call (`minimal` to `max`)             |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Search Console and Analytics linking with your own Google OAuth app |
-| `CONTEXT_API_KEY`                          | Optional JavaScript rendering for site audits                                |
+| `CONTEXT_API_KEY`                          | Optional fallback renderer for pages the local browser cannot render         |
 
 For Google, register your own OAuth application with these redirect URLs under your public address: `/api/gsc/oauth/callback` for Search Console and `/api/ga4/oauth/callback` for Analytics. See [`SELF_HOSTING_GOOGLE_SEARCH_CONSOLE.md`](./SELF_HOSTING_GOOGLE_SEARCH_CONSOLE.md). Signing in with Google is not offered; accounts use email and password.
 
 Site audits can crawl up to 10,000 pages (1,000 with JavaScript rendering), with no lifetime quota. Costs are what the providers charge, with no OpenSEO markup.
+
+The `browser` service runs Chromium and Lighthouse on your machine, so JavaScript rendering and Lighthouse checks in site audits cost nothing. It reaches public addresses only, through a proxy that refuses private and reserved ones. It has no published image: build it with `deploy/standalone/compose.build.yaml`, or build `deploy/standalone/Dockerfile.browser` and set `OPENSEO_BROWSER_IMAGE`.
 
 MCP clients connect to `/mcp` and sign in with your OpenSEO account, or use an API key from Settings. Clients that register with a metadata URL (CIMD) are not supported; use dynamic client registration or an API key.
 

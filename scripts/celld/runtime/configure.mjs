@@ -61,6 +61,9 @@ config.vars = {
   ...secrets,
   BETTER_AUTH_URL: url.origin,
   CRAWL_GATEWAY_URL: "http://crawl-gateway:8090",
+  // The `browser` service: rendering and Lighthouse on local Chromium.
+  BROWSER_GATEWAY_URL: "http://browser:8091",
+  AUDIT_BROWSER_RENDERING: "true",
   AUTH_MODE: authMode,
   DATABASE_PROVIDER: "d1",
   OPENSEO_TELEMETRY_DISABLED: "true",

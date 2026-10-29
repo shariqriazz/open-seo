@@ -9,3 +9,7 @@ services:
   runtime: *build
   init: *build
   crawl-gateway: *build
+  browser:
+    build:
+      context: ../..
+      dockerfile: deploy/standalone/Dockerfile.browser

@@ -4,6 +4,7 @@ import { createDataforseoClient } from "@/server/lib/dataforseo";
 import type { LighthouseResult, LighthouseStrategy } from "./types";
 import type { PageFetchClass } from "@/shared/audit-fetch-class";
 import { putTextToR2 } from "@/server/lib/r2";
+import { runLocalLighthouse } from "./local-browser";
 
 interface LighthouseSamplePage {
   url: string;
@@ -56,9 +57,15 @@ export async function fetchLighthouseResult(
   strategy: "mobile" | "desktop",
   billingCustomer: BillingCustomerContext,
 ): Promise<LighthouseFetchResult> {
-  const dataforseo = createDataforseoClient(billingCustomer);
   try {
-    const data = await dataforseo.lighthouse.live({ url, strategy });
+    // The standalone stack runs Lighthouse on its own Chromium at no cost;
+    // everywhere else DataForSEO does.
+    const data =
+      (await runLocalLighthouse(url, strategy)) ??
+      (await createDataforseoClient(billingCustomer).lighthouse.live({
+        url,
+        strategy,
+      }));
 
     return {
       result: {

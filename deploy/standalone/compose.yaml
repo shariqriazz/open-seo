@@ -84,6 +84,15 @@ services:
     depends_on:
       init: { condition: service_completed_successfully }
     restart: unless-stopped
+  browser:
+    # Chromium and Lighthouse for site audits (deploy/standalone/Dockerfile.browser).
+    # No published image: build it with compose.build.yaml or set OPENSEO_BROWSER_IMAGE.
+    image: ${OPENSEO_BROWSER_IMAGE:-openseo-browser:latest}
+    volumes: [config:/config:ro]
+    mem_limit: 3g
+    depends_on:
+      init: { condition: service_completed_successfully }
+    restart: unless-stopped
   web:
     image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
     ports: ["127.0.0.1:${PORT:-3001}:80"]

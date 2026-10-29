@@ -1,0 +1,5 @@
+*
+!deploy/standalone/browser/package.json
+!deploy/standalone/browser/package-lock.json
+!scripts/celld/runtime/browser-gateway.mjs
+!scripts/celld/runtime/crawl-gateway.mjs

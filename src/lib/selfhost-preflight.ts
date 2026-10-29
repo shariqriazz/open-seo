@@ -305,7 +305,7 @@ function checkOptionalFeatures(env: EnvRecord, items: PreflightItem[]): void {
             name: "JavaScript rendering",
             level: "info",
             message:
-              'CONTEXT_API_KEY not set (optional) — on Docker the site audit "Render JavaScript" option is disabled; on Cloudflare, Browser Run renders without a fallback.',
+              "CONTEXT_API_KEY not set (optional) — Docker renders with its own browser service; on Cloudflare, Browser Run renders without a fallback.",
           },
   );
 }
