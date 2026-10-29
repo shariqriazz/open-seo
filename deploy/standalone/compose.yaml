@@ -35,6 +35,11 @@ services:
       CELLD_MAX_RSS_MB: "1536"
       CELLD_MAX_RESIDENT_CELLS: "64"
       CELLD_V8_HEAP_LIMIT_MB: "256"
+      # celld stops delivering timers and fetches to a handler after this many
+      # seconds (default 300) without failing it, so a site audit froze about
+      # five minutes in. A crawl of 10,000 pages at one page a second takes
+      # about three hours.
+      CELLD_HANDLER_BUDGET_S: "21600"
       CELLD_MAX_REQUEST_BODY_BYTES: "33554432"
       RUST_LOG: warn,cell_console=info
     mem_limit: 2g
